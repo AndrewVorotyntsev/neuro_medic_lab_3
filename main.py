@@ -3,16 +3,19 @@ import os
 import numpy as np
 from keras import Sequential
 from keras.src.applications.resnet import ResNet50
-from keras.src.layers import Flatten, Dense
+from keras.src.layers import Flatten, Dense, Dropout, MaxPooling2D
 from keras.src.legacy.preprocessing.image import ImageDataGenerator
+from keras.src.optimizers import Adam
 from keras.src.utils import load_img, img_to_array
+
+import datetime
 
 current_dir = os.path.dirname(__file__)
 
 train_dir = os.path.join(current_dir, "train")
 test_dir = os.path.join(current_dir, "test")
 
-resolution = (1440, 600)
+resolution = (224, 224)
 # TODO:
 #  использовать нативное разрешение
 #  п.3)
@@ -20,22 +23,23 @@ resolution = (1440, 600)
 #  поиграться со слоями
 
 # Создание генераторов для загрузки изображений
-train_datagen = ImageDataGenerator(rescale=1./255)
+# Создание генераторов для загрузки изображений
+train_datagen = ImageDataGenerator(rescale=1. / 255, validation_split=0.4)
 
 train_generator = train_datagen.flow_from_directory(
     train_dir,
     target_size=resolution,
     batch_size=32,
-    interpolation='nearest',
     class_mode='categorical',
+    shuffle=True,
     subset='training')
 
-# validation_generator = train_datagen.flow_from_directory(
-#     test_dir,
-#     target_size=resolution,
-#     batch_size=32,
-#     class_mode='categorical',
-#     subset='validation')
+validation_generator = train_datagen.flow_from_directory(
+    train_dir,
+    target_size=resolution,
+    batch_size=32,
+    class_mode='categorical',
+    subset='validation')
 
 # Загрузка предобученной модели ResNet50 без полносвязанного слоя
 base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(resolution + (3,)))
@@ -44,27 +48,35 @@ base_model = ResNet50(weights='imagenet', include_top=False, input_shape=(resolu
 model = Sequential()
 model.add(base_model)
 model.add(Flatten())
-model.add(Dense(128, activation='relu'))  # Добавление полносвязанного слоя с 256 нейронами
-model.add(Dense(12, activation='softmax'))  # 12 - количество классов в вашем наборе данных
+# model.add(Dense(128, activation='tanh'))
+# model.add(Dense(256, activation='relu'))
+# model.add(MaxPooling2D(4, 4), 4)
+# model.add(Dropout(rate=0.5))
+model.add(Dense(12, activation='softmax'))  # 12 - количество классов
 
 # Замораживаем веса предобученной части модели
 for layer in base_model.layers:
     layer.trainable = False
 
+optimizer = Adam(learning_rate=0.0001)
+
 # Компиляция модели
-model.compile(optimizer='adam', loss='categorical_crossentropy', metrics=['accuracy'])
+model.compile(optimizer=optimizer, loss='categorical_crossentropy', metrics=['accuracy'],)
 
 # Обучение модели
 model.fit(
     train_generator,
     steps_per_epoch=train_generator.samples,
-    epochs=5)
+    validation_data=validation_generator,
+    validation_steps=validation_generator.samples,
+    epochs=10)
 
 test_files = os.listdir(test_dir)
 
 class_names = ['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11', '12']
 # Открытие файла для записи результатов классификации
-with open('classification_results.txt', 'w') as f:
+log_path = '{date:%Y-%m-%d_%H_%M_%S}.txt'.format(date=datetime.datetime.now())
+with open(log_path, 'w') as f:
     f.write("File:    Result of classification:\n")
     # Применение модели к каждому изображению из папки test
     for filename in test_files:
