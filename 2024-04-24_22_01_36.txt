@@ -63,3 +63,5 @@ File:    Result of classification:
 62.jpg	1
 63.jpg	3
 64.jpg	2
+
+accuracy: 0.2826 val_accuracy: 0.1566
